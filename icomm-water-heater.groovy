@@ -29,7 +29,7 @@ metadata{
         attribute "DSN", "string"
         attribute "Serial Number", "string"
         attribute "Install Location", "string"
-        attribute "Pending Temperature", "number"
+        attribute "Pending Temperature", "string"
         attribute "Maximum Temperature", "number"
         attribute "Previous Temperature", "number"
         attribute "Schedule Mode", "string"
@@ -82,7 +82,6 @@ def ProcessUpdate(heater) {
     device.setName(heater.name)
     UpsertAttribute("Serial Number", heater.serial)
     UpsertAttribute("Install Location", heater?.install?.location)
-    UpsertAttribute("Online", heater.online)
 
     def setpoint = heater?.data?.temperatureSetpoint
     UpsertAttribute("thermostatSetpoint", setpoint, location.temperatureScale)
