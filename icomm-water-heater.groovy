@@ -130,6 +130,10 @@ def ProcessUpdate(heater) {
     state.supportedModes = heater?.data?.modes
 }
 
+def setLevel(level) {
+    log.warn("You cannot set the level on your water heater. It refills automatically.");
+}
+
 def setMode(mode, days = null) {
     log.info("setMode(${mode}) on ${device.getDisplayName()} invoked.")
 
