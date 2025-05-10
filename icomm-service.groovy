@@ -262,34 +262,43 @@ def sendGraphQLRequest(query, variables, handler, autologin = true) {
 
     def uri = "${BASE_URI}/graphql"
 
-    httpPostJson([
-        uri: uri,
-        headers: headers,
-        body: body
-    ]) { response ->
-        def status = response.getStatus();
-        def data = response.getData();
+    try {
+        httpPostJson([
+            uri: uri,
+            headers: headers,
+            body: body
+        ]) { response ->
+            def status = response.getStatus();
+            def data = response.getData();
 
-        if (
-            (status == 401 || data?.errors?.extensions.any{ it.code == "UNAUTHORIZED_ERROR" }) &&
-            autologin
-        ) {
+            if (
+                data?.errors?.extensions.any{ it.code == "UNAUTHORIZED_ERROR" } &&
+                autologin
+            ) {
+                if (DebugLogsEnabled()) log.debug("Session expired, logging in again")
+
+                state.remove("accessToken")
+                LoginIfNoToken()
+
+                // Retry the request after logging in
+                runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: false]])
+            } else if (status == 200) {
+                this."$handler"(response)
+            } else {
+                log.error("GraphQL request failed with status ${status}: ${response.getData()}")
+            }
+        }
+    } catch (groovyx.net.http.HttpResponseException e) {
+        if( e.getStatusCode() == 401 ) {
             if (DebugLogsEnabled()) log.debug("Session expired, logging in again")
-
             state.remove("accessToken")
             LoginIfNoToken()
-
-            // Retry the request after logging in
             runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: false]])
-        } else if (status == 200) {
-            if (DebugLogsEnabled()) log.debug("GraphQL request succeeded: ${response.getData()}")
-
-            this."$handler"(response)
-        } else {
-            log.error("GraphQL request failed with status ${status}: ${response.getData()}")
+        }
+        else {
+            log.error("GraphQL request failed: ${e.message}")
         }
     }
-
 }
 
 def sendGraphQLRequest(Map params) {
