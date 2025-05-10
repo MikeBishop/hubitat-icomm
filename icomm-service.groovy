@@ -1,5 +1,5 @@
 /*
-* Hubitat-iCONN Integration
+* Hubitat-iCOMM Integration
 * Copyright 2025 Mike Bishop,  All Rights Reserved
 *
 * Based on:
@@ -28,7 +28,7 @@ import java.time.LocalDate
 @Field static final String USER_AGENT = "okhttp/4.9.2"
 
 metadata{
-    definition ( name: "iCONN", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://github.com/MikeBishop/hubitat-icomm/icomm-service.groovy" ) {
+    definition ( name: "iCOMM", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://github.com/MikeBishop/hubitat-icomm/icomm-service.groovy" ) {
         // Attempting to indicate what capabilities the device should be capable of
         capability "Refresh"
 
@@ -38,8 +38,8 @@ metadata{
     preferences{
         section{
             // Login information for the iCOMM account
-            input( type: "string", name: "EmailAddress", title: "<font color='FF0000'><b>iCONN account e-mail address</b></font>", required: true )
-            input( type: "password", name: "Password", title: "<font color='FF0000'><b>iCONN account password</b></font>", required: true )
+            input( type: "string", name: "EmailAddress", title: "<font color='FF0000'><b>iCOMM account e-mail address</b></font>", required: true )
+            input( type: "password", name: "Password", title: "<font color='FF0000'><b>iCOMM account password</b></font>", required: true )
 
             input( type: "enum", name: "Brand", title: "<b>Brand</b>", required: true, options: [ (AOSMITH): "A.O. Smith", (STATE): "State" ], defaultValue: "A.O. Smith" )
 
@@ -214,7 +214,7 @@ def ProcessGetDevicesResponse(response) {
 def ProcessDeviceUpdate(heater) {
 
     if (!getChildDevice(heater.junctionId)) {
-        addChildDevice("iCONNWaterHeater", heater.junctionId, [
+        addChildDevice("iCOMMWaterHeater", heater.junctionId, [
             isComponent: true,
             name: heater.name ?: "${heater.install.location} Water Heater",
         ])
