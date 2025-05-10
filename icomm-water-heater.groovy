@@ -29,24 +29,22 @@ metadata{
         attribute "DSN", "string"
         attribute "Serial Number", "string"
         attribute "Install Location", "string"
-        attribute "Pending Temperature", "string"
         attribute "Maximum Temperature", "number"
         attribute "Previous Temperature", "number"
         attribute "Schedule Mode", "string"
         attribute "Online", "string"
         attribute "Firmware Version", "string"
         attribute "Mode", "string"
-        attribute "Pending Mode", "string"
 
         command "setMode", [
             [
                 name: "Mode",
                 type: "ENUM",
-                options: [
-                    "HYBRID": "Hybrid",
-                    "HEAT_PUMP": "Heat Pump Only",
-                    "ELECTRIC": "Electric Only",
-                    "VACATION": "Vacation",
+                constraints: [
+                    "HYBRID",
+                    "HEAT_PUMP",
+                    "ELECTRIC",
+                    "VACATION"
                 ]
             ],
             [
@@ -87,10 +85,6 @@ def ProcessUpdate(heater) {
     UpsertAttribute("thermostatSetpoint", setpoint, location.temperatureScale)
     UpsertAttribute("heatingSetpoint", setpoint, location.temperatureScale)
     UpsertAttribute(
-        "Pending Temperature",
-        heater?.data?.temperatureSetpointPending
-    );
-    UpsertAttribute(
         "Maximum Temperature",
         heater?.data?.temperatureSetpointMaximum,
         location.temperatureScale
@@ -101,8 +95,7 @@ def ProcessUpdate(heater) {
         location.temperatureScale
     );
     UpsertAttribute("Mode", heater?.data?.mode);
-    UpsertAttribute("Pending Mode", heater?.data?.modePending);
-    UpsertAttribute("Online", heater?.data?.isOnline);
+    UpsertAttribute("Online", heater?.data?.isOnline.toString());
     UpsertAttribute("Firmware Version", heater?.data?.firmwareVersion);
 
     def waterLevel = 100;
@@ -127,6 +120,11 @@ def ProcessUpdate(heater) {
     UpsertAttribute("level", waterLevel, "%")
 
     state.supportedModes = heater?.data?.modes
+
+    if (heater?.data?.modePending || heater?.data?.temperatureSetpointPending) {
+        log.info("Pending changes on ${device.getDisplayName()}")
+        runIn(5, "refresh")
+    }
 }
 
 def setLevel(level) {
