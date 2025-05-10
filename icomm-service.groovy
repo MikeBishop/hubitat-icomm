@@ -186,6 +186,7 @@ def ProcessLoginResponse(response) {
         return
     }
     else if (DebugLogsEnabled()) {
+        UpsertAttribute( "Status", "Login successful" )
         log.debug("Succesfully logged in to iCOMM API.")
     }
 }
@@ -198,6 +199,15 @@ def ProcessGetDevicesResponse(response) {
     def waterHeaters = response.getData()?.data?.devices.findAll {
         ["NextGenHeatPump", "RE3Connected"].contains(it?.data?.__typename)
     };
+
+    if (waterHeaters == null || waterHeaters.size() == 0) {
+        log.warn("No compatible water heaters found.")
+        UpsertAttribute( "Status", "No compatible water heaters found" )
+        return
+    }
+    else {
+        UpsertAttribute( "Status", "Connected" )
+    }
 
     for (heater in waterHeaters) {
         ProcessDeviceUpdate(heater)
