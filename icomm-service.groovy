@@ -16,10 +16,7 @@
 * DebugLogs = OPTIONAL - DEFAULT = false. Should debug logging be enabled?
 */
 
-import java.time.format.DateTimeFormatter
-import java.time.OffsetDateTime
 import groovy.transform.Field
-import java.time.LocalDate
 
 @Field static final String AOSMITH = "aosmith"
 @Field static final String STATE = "state"
@@ -149,7 +146,7 @@ def refresh() {
     catch (IOException e)
     {
         log.error( "Error connecting to API for status. ${e}" )
-        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
+        UpsertAttribute( "Status", "Connection Failed: ${e.message}" )
     }
 }
 
