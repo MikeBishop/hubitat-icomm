@@ -14,11 +14,13 @@
 */
 
 import groovy.transform.Field
+import groovy.json.JsonOutput
 
 metadata{
     definition ( name: "iCOMMWaterHeater", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://github.com/MikeBishop/hubitat-icomm/icomm-water-heater.groovy" ) {
         capability "Sensor"
         capability "Refresh"
+        capability "Thermostat"
         capability "ThermostatHeatingSetpoint"
         capability "ThermostatOperatingState"
         capability "ThermostatSetpoint"
@@ -67,7 +69,11 @@ metadata{
 
 def installed() {
     // Set static attributes at install time
-    // Currently don't expose any static attributes; might later
+    UpsertAttribute("supportedThermostatFanModes", JsonOutput.toJson(["fanAuto", "fanOn"]));
+    UpsertAttribute('supportedThermostatFanModes', JsonOutput.toJson(["off"]) )
+    UpsertAttribute('supportedThermostatModes', JsonOutput.toJson(["heat"]) )
+    UpsertAttribute("thermostatFanMode", "off")
+    UpsertAttribute("thermostatMode", "heat")
 }
 
 def ProcessUpdate(heater) {
@@ -148,7 +154,7 @@ def setMode(mode, days = null) {
         }
         else if ( days < 1 || days > 100 ) {
             log.warn("Mode ${mode} on ${device.getDisplayName()} only supports 1-100 days.")
-            return
+            days = days > 100 ? 100 : 1
         }
     }
     else {
@@ -156,6 +162,13 @@ def setMode(mode, days = null) {
         if( days != null ) {
             log.warn("Mode ${mode} on ${device.getDisplayName()} does not support setting the number of days.")
             days = null
+        }
+
+        if( targetMode.mode == device.currentValue("Mode") ) {
+            if( parent.DebugLogsEnabled() ) {
+                log.debug("Mode ${mode} on ${device.getDisplayName()} is already set.")
+            }
+            return
         }
     }
 
@@ -204,6 +217,14 @@ def setHeatingSetpoint(temperature) {
     log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} invoked.")
 
     temperature = normalizeTemperature(temperature)
+    if (temperature == null) {
+        log.warn("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is null.  Will not set.")
+        return
+    }
+    else if (temperature == device.currentValue("thermostatSetpoint")) {
+        log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is already set.")
+        return
+    }
 
     getParent().sendGraphQLRequest(
         SET_HEATING_SETPOINT,
