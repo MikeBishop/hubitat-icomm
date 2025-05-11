@@ -248,7 +248,7 @@ def ProcessChange(response, fieldToCheck) {
         log.error("Failed to change mode: ${response.getData()}")
     }
 
-    refresh()
+    runIn(5, "refresh")
 }
 
 def sendGraphQLRequest(query, variables, handler, autologin = true) {
