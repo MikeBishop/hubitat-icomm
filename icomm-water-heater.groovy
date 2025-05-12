@@ -36,6 +36,11 @@ metadata{
         attribute "Online", "string"
         attribute "Firmware Version", "string"
         attribute "Mode", "string"
+        attribute "supportedThermostatFanModes", "string"
+        attribute 'supportedThermostatFanModes', "string"
+        attribute 'supportedThermostatModes', "string"
+        attribute "thermostatFanMode", "string"
+        attribute "thermostatMode", "string"
 
         command "setMode", [
             [
@@ -125,10 +130,10 @@ def ProcessUpdate(heater) {
         debug("Pending changes on ${device.getDisplayName()}")
         runIn(5, "refresh")
     }
-}
 
-def setLevel(level) {
-    log.warn("You cannot set the level on your water heater. It refills automatically.");
+    if (device.currentValue("thermostatMode") != "heat" ) {
+        installed();
+    }
 }
 
 def setMode(mode, days = null) {
@@ -246,6 +251,59 @@ def UpsertAttribute( Variable, Value, Unit = null ){
             sendEvent( name: "${ Variable }", value: Value )
         }
     }
+}
+
+// Dummy functions
+def setLevel(level) {
+    log.warn("You cannot set the level on your water heater. It refills automatically.");
+}
+
+def cool() {
+    log.warn("cool() is not supported and takes no action.")
+}
+
+def emergencyHeat() {
+    log.warn("emergencyHeat() is not supported and takes no action.")
+}
+
+def setCoolingSetpoint(requestedTemperator) {
+    log.warn("setCoolingSetpoint() is not supported and takes no action.")
+}
+
+def fanAuto() {
+    log.warn("fanAuto() is not supported and takes no action.")
+}
+
+def fanCirculate() {
+    log.warn("fanCirculate() is not supported and takes no action.")
+}
+
+def fanOn() {
+    log.warn("fanOn() is not supported and takes no action.")
+}
+
+def setSchedule(schedule) {
+    log.warn("setSchedule() is not supported and takes no action.")
+}
+
+def setThermostatFanMode(fanmode) {
+    log.warn("setThermostatFanMode() is not supported and takes no action.")
+}
+
+def setThermostatMode(mode) {
+    log.warn("setThermostatMode() is not supported and takes no action.")
+}
+
+def auto() {
+    log.warn("auto() is not supported and takes no action. Consider setting the thermostat mode instead.")
+}
+
+def heat() {
+    log.warn("heat() is not supported and takes no action. Consider setting the thermostat mode instead.")
+}
+
+def off() {
+    log.warn("off() is not supported and takes no action. Consider setting the thermostat to Vacation Mode instead.")
 }
 
 @Field static final String SET_MODE = "mutation updateMode(\$junctionId: String!, \$mode: ModeInput!) { updateMode(junctionId: \$junctionId, mode: \$mode) }";
