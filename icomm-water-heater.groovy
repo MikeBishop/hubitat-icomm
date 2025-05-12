@@ -17,7 +17,7 @@ import groovy.transform.Field
 import groovy.json.JsonOutput
 
 metadata{
-    definition ( name: "iCOMMWaterHeater", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://github.com/MikeBishop/hubitat-icomm/icomm-water-heater.groovy" ) {
+    definition ( name: "iCOMMWaterHeater", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://raw.githubusercontent.com/MikeBishop/hubitat-icomm/refs/heads/main/icomm-water-heater.groovy" ) {
         capability "Sensor"
         capability "Refresh"
         capability "Thermostat"

@@ -25,7 +25,7 @@ import groovy.transform.Field
 @Field static final String USER_AGENT = "okhttp/4.9.2"
 
 metadata{
-    definition ( name: "iCOMM", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://github.com/MikeBishop/hubitat-icomm/icomm-service.groovy" ) {
+    definition ( name: "iCOMM", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://raw.githubusercontent.com/MikeBishop/hubitat-icomm/refs/heads/main/icomm-service.groovy" ) {
         // Attempting to indicate what capabilities the device should be capable of
         capability "Refresh"
 
