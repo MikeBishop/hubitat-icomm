@@ -245,7 +245,7 @@ def ProcessChange(response, fieldToCheck) {
 
     def data = response.getData()?.data;
     if (!data || data[fieldToCheck] != true) {
-        log.error("Failed to change mode: ${response.getData()}")
+        log.error("Failed to change state: ${response.getData()}")
     }
 
     runIn(5, "refresh")
