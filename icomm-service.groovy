@@ -251,7 +251,7 @@ def ProcessChange(response, fieldToCheck) {
     runIn(5, "refresh")
 }
 
-def sendGraphQLRequest(query, variables, handler, autologin = true) {
+def sendGraphQLRequest(query, variables, handler, autologin = true, retry = false) {
     def headers = [
         "brand": Brand,
         "version": APP_VERSION,
@@ -305,6 +305,14 @@ def sendGraphQLRequest(query, variables, handler, autologin = true) {
         else {
             log.error("GraphQL request failed: ${e.message}")
         }
+    } catch (java.net.SocketTimeoutException e) {
+        if (!retry ) {
+            log.warn("GraphQL request timed out: ${e.message}; will retry")
+            runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: autologin, retry: true]])
+        }
+        else {
+            log.error("GraphQL request failed: ${e.message}")
+        }
     }
 }
 
@@ -313,8 +321,9 @@ def sendGraphQLRequest(Map params) {
     def variables = params.variables
     def handler = params.handler
     def autologin = params.autologin ?: true
+    def retry = params.retry ?: false
 
-    sendGraphQLRequest(query, variables, handler, autologin)
+    sendGraphQLRequest(query, variables, handler, autologin, retry)
 }
 
 
