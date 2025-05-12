@@ -171,9 +171,7 @@ def LoginIfNoToken() {
 }
 
 def ProcessLoginResponse(response) {
-    if (DebugLogsEnabled()) {
-        log.debug("Login raw data = \"${response.getData()}\"")
-    }
+    debug("Login raw data = \"${response.getData()}\"")
 
     state.accessToken = response.getData()?.data?.login?.user?.tokens?.accessToken
 
@@ -182,16 +180,14 @@ def ProcessLoginResponse(response) {
         UpsertAttribute( "Status", "Login failed" )
         return
     }
-    else if (DebugLogsEnabled()) {
+    else {
         UpsertAttribute( "Status", "Login successful" )
-        log.debug("Succesfully logged in to iCOMM API.")
+        debug("Succesfully logged in to iCOMM API.")
     }
 }
 
 def ProcessGetDevicesResponse(response) {
-    if( DebugLogsEnabled() ) {
-        log.debug("Got response ${response.getData()?.data?.devices}")
-    }
+    debug("Got response ${response.getData()?.data?.devices}")
 
     def waterHeaters = response.getData()?.data?.devices.findAll {
         ["NextGenHeatPump", "RE3Connected"].contains(it?.data?.__typename)
@@ -239,9 +235,7 @@ def ProcessSetpointChange(response) {
 }
 
 def ProcessChange(response, fieldToCheck) {
-    if (DebugLogsEnabled()) {
-        log.debug("State change response: ${response.getData()}")
-    }
+    debug("State change response: ${response.getData()}")
 
     def data = response.getData()?.data;
     if (!data || data[fieldToCheck] != true) {
@@ -282,7 +276,7 @@ def sendGraphQLRequest(query, variables, handler, autologin = true, retry = fals
                 data?.errors?.extensions.any{ it.code == "UNAUTHORIZED_ERROR" } &&
                 autologin
             ) {
-                if (DebugLogsEnabled()) log.debug("Session expired, logging in again")
+                debug("Session expired, logging in again")
 
                 state.remove("accessToken")
                 LoginIfNoToken()
@@ -297,7 +291,7 @@ def sendGraphQLRequest(query, variables, handler, autologin = true, retry = fals
         }
     } catch (groovyx.net.http.HttpResponseException e) {
         if( e.getStatusCode() == 401 ) {
-            if (DebugLogsEnabled()) log.debug("Session expired, logging in again")
+            debug("Session expired, logging in again")
             state.remove("accessToken")
             LoginIfNoToken()
             runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: false]])
@@ -343,6 +337,12 @@ def UpsertAttribute( name, value, unit = null ) {
 
 def DebugLogsEnabled() {
      return DebugLogs
+}
+
+def debug(String message) {
+    if (DebugLogsEnabled()) {
+        log.debug(message)
+    }
 }
 
 @Field static final String LOGIN_QUERY = """

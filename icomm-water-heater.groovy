@@ -76,7 +76,7 @@ def installed() {
 }
 
 def ProcessUpdate(heater) {
-    if (getParent().DebugLogsEnabled()) log.debug("Thermostat raw data ${heater.toString()}")
+    debug("Thermostat raw data ${heater.toString()}")
 
     UpsertAttribute("Brand", heater.brand)
     UpsertAttribute("Model", heater.model)
@@ -92,11 +92,6 @@ def ProcessUpdate(heater) {
     UpsertAttribute(
         "Maximum Temperature",
         heater?.data?.temperatureSetpointMaximum,
-        location.temperatureScale
-    );
-    UpsertAttribute(
-        "Previous Temperature",
-        heater?.data?.temperatureSetpointPrevious,
         location.temperatureScale
     );
     UpsertAttribute("Mode", heater?.data?.mode);
@@ -127,7 +122,7 @@ def ProcessUpdate(heater) {
     state.supportedModes = heater?.data?.modes
 
     if (heater?.data?.modePending || heater?.data?.temperatureSetpointPending) {
-        log.info("Pending changes on ${device.getDisplayName()}")
+        debug("Pending changes on ${device.getDisplayName()}")
         runIn(5, "refresh")
     }
 }
@@ -137,7 +132,7 @@ def setLevel(level) {
 }
 
 def setMode(mode, days = null) {
-    log.info("setMode(${mode}) on ${device.getDisplayName()} invoked.")
+    debug("setMode(${mode}) on ${device.getDisplayName()} invoked.")
 
     def targetMode = state.supportedModes.find { it.mode == mode }
 
@@ -164,9 +159,7 @@ def setMode(mode, days = null) {
         }
 
         if( targetMode.mode == device.currentValue("Mode") ) {
-            if( parent.DebugLogsEnabled() ) {
-                log.debug("Mode ${mode} on ${device.getDisplayName()} is already set.")
-            }
+            debug("Mode ${mode} on ${device.getDisplayName()} is already set.")
             return
         }
     }
@@ -183,7 +176,7 @@ def setMode(mode, days = null) {
 }
 
 def refresh() {
-    log.info("refresh() on ${device.getDisplayName()} invoked.")
+    debug("refresh() on ${device.getDisplayName()} invoked.")
     getParent().refresh()
 }
 
@@ -213,7 +206,7 @@ def normalizeTemperature(temperature) {
 }
 
 def setHeatingSetpoint(temperature) {
-    log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} invoked.")
+    debug("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} invoked.")
 
     temperature = normalizeTemperature(temperature)
     if (temperature == null) {
@@ -221,7 +214,7 @@ def setHeatingSetpoint(temperature) {
         return
     }
     else if (temperature == device.currentValue("thermostatSetpoint")) {
-        log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is already set.")
+        debug("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is already set.")
         return
     }
 
@@ -233,6 +226,12 @@ def setHeatingSetpoint(temperature) {
         ],
         "ProcessSetpointChange"
     )
+}
+
+def debug(String message) {
+    if (getParent().DebugLogsEnabled()) {
+        log.debug(message)
+    }
 }
 
 
