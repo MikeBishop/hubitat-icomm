@@ -32,7 +32,6 @@ metadata{
         attribute "Serial Number", "string"
         attribute "Install Location", "string"
         attribute "Maximum Temperature", "number"
-        attribute "Previous Temperature", "number"
         attribute "Schedule Mode", "string"
         attribute "Online", "string"
         attribute "Firmware Version", "string"

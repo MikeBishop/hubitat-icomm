@@ -380,7 +380,6 @@ query devices(\$forceUpdate: Boolean, \$junctionIds: [String]) {
             __typename
             temperatureSetpoint
             temperatureSetpointPending
-            temperatureSetpointPrevious
             temperatureSetpointMaximum
             modes {
                 mode
