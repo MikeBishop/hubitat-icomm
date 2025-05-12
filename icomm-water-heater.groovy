@@ -37,7 +37,6 @@ metadata{
         attribute "Firmware Version", "string"
         attribute "Mode", "string"
         attribute "supportedThermostatFanModes", "string"
-        attribute 'supportedThermostatFanModes', "string"
         attribute 'supportedThermostatModes', "string"
         attribute "thermostatFanMode", "string"
         attribute "thermostatMode", "string"
@@ -73,7 +72,6 @@ metadata{
 
 def installed() {
     // Set static attributes at install time
-    UpsertAttribute("supportedThermostatFanModes", JsonOutput.toJson(["fanAuto", "fanOn"]));
     UpsertAttribute('supportedThermostatFanModes', JsonOutput.toJson(["off"]) )
     UpsertAttribute('supportedThermostatModes', JsonOutput.toJson(["heat"]) )
     UpsertAttribute("thermostatFanMode", "off")
