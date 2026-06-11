@@ -87,7 +87,7 @@ def ProcessUpdate(heater) {
     UpsertAttribute("DSN", heater.dsn)
     device.setName(heater.name)
     UpsertAttribute("Serial Number", heater.serial)
-    UpsertAttribute("Install Location", heater?.install?.location)
+    UpsertAttribute("Install Location", heater?.location)
 
     def setpoint = heater?.data?.temperatureSetpoint
     UpsertAttribute("thermostatSetpoint", setpoint, location.temperatureScale)
@@ -123,6 +123,10 @@ def ProcessUpdate(heater) {
     UpsertAttribute("level", waterLevel, "%")
 
     state.supportedModes = heater?.data?.modes
+
+    // Store hotWaterPlusLevel for RE3Premium devices; null for all others
+    def hwpRaw = heater?.data?.hotWaterPlusLevel
+    state.hotWaterPlusLevel = (hwpRaw != null) ? [OFF: 0, ONE: 1, TWO: 2, THREE: 3].get(hwpRaw, 0) : null
 
     if (heater?.data?.modePending || heater?.data?.temperatureSetpointPending) {
         debug("Pending changes on ${device.getDisplayName()}")
@@ -170,6 +174,11 @@ def setMode(mode, days = null) {
     def modePayload = ["mode": targetMode.mode];
     if (days != null) {
         modePayload["days"] = days
+    }
+
+    // RE3Premium requires hotWaterPlusLevel in every mode change
+    if (state.hotWaterPlusLevel != null) {
+        modePayload["hotWaterPlusLevel"] = (targetMode.controls == "HOT_WATER_PLUS") ? state.hotWaterPlusLevel : 0
     }
 
     getParent().sendGraphQLRequest(SET_MODE, [
