@@ -23,6 +23,18 @@ import groovy.transform.Field
 @Field static final String BASE_URI = "https://r2.wh8.co"
 @Field static final String APP_VERSION = "14.1.0"
 @Field static final String USER_AGENT = "okhttp/4.12.0"
+// Service sometimes takes >10s (Hubitat default) to answer.
+@Field static final int REQUEST_TIMEOUT_S = 30
+// Access token (Keycloak JWT) lives 5 min. Re-login this long before expiry.
+// Login also returns a refreshToken, but it's for a confidential Keycloak
+// client ("icomm-server") whose secret only iCOMM's backend has, and the
+// GraphQL API has no refresh call. So re-login is the only option.
+@Field static final int TOKEN_EXPIRY_MARGIN_S = 30
+// Service flaky. Report failure only after this many polls in a row fail.
+@Field static final int FAILED_POLLS_BEFORE_STATUS = 3
+// Attempts per request (and per poll login) before giving up.
+@Field static final int MAX_ATTEMPTS = 3
+@Field static final int RETRY_DELAY_S = 10
 
 metadata{
     definition ( name: "iCOMM", namespace: "evequefou", author: "Mike Bishop", importUrl: "https://raw.githubusercontent.com/MikeBishop/hubitat-icomm/refs/heads/main/icomm-service.groovy" ) {
@@ -64,45 +76,52 @@ def updated() {
 
     // On update clear out any old session id in case login information changed
     state.remove("accessToken")
+    state.remove("tokenExpiry")
+
+    // Settings may have fixed the failure; start failure tracking fresh.
+    // refreshToken: stored by a test build; not usable (confidential
+    // Keycloak client), so just clear it.
+    ["refreshToken", "loginRejected", "lastLoginError", "failedPolls", "pollPending", "requestsFailing"].each { state.remove(it) }
 
     // Check if the refresh rate is not set for some reason and putting it at the default
     if( RefreshRate == null ) {
         RefreshRate = "5 minutes"
     }
 
-    def Hour = ( new Date().format( "h" ) as int )
-    def Minute = ( new Date().format( "m" ) as int )
-    def Second = ( new Date().format( "s" ) as int )
-    Second = ( (Second + 5) % 60 )
+    // Random offsets so installs don't all hit the service at the same
+    // moment (e.g. every :00/:05). Re-randomized on each save.
+    def rng = new Random()
+    def Second = rng.nextInt(60)
+    def Minute = rng.nextInt(60)
 
     // Check what the refresh rate is set for then run it
     switch( RefreshRate ){
         case "15 seconds": // Schedule the refresh check for every 15 seconds
-            schedule( "0/15 * * ? * *", "refresh" )
+            schedule( "${ Second % 15 }/15 * * ? * *", "refresh" )
             break
         case "30 seconds": // Schedule the refresh check for every 30 seconds
-            schedule( "0/30 * * ? * *", "refresh" )
+            schedule( "${ Second % 30 }/30 * * ? * *", "refresh" )
             break
         case "1 minute": // Schedule the refresh check for every minute
             schedule( "${ Second } * * ? * *", "refresh" )
             break
         case "5 minutes": // Schedule the refresh check for every 5 minutes
-            schedule( "${ Second } 0/5 * ? * *", "refresh" )
+            schedule( "${ Second } ${ Minute % 5 }/5 * ? * *", "refresh" )
             break
         case "10 minutes": // Schedule the refresh check for every 10 minutes
-            schedule( "${ Second } 0/10 * ? * *", "refresh" )
+            schedule( "${ Second } ${ Minute % 10 }/10 * ? * *", "refresh" )
             break
         case "15 minutes": // Schedule the refresh check for every 15 minutes
-            schedule( "${ Second } 0/15 * ? * *", "refresh" )
+            schedule( "${ Second } ${ Minute % 15 }/15 * ? * *", "refresh" )
             break
         case "30 minutes": // Schedule the refresh check for every 30 minutes
-            schedule( "${ Second } 0/30 * ? * *", "refresh" )
+            schedule( "${ Second } ${ Minute % 30 }/30 * ? * *", "refresh" )
             break
         case "1 hour": // Schedule the refresh check for every hour
             schedule( "${ Second } ${ Minute } * ? * *", "refresh" )
             break
         case "3 hours": // Schedule the refresh check for every 3 hours
-            schedule( "${ Second } ${ Minute } 0/3 ? * *", "refresh" )
+            schedule( "${ Second } ${ Minute } ${ rng.nextInt(3) }/3 ? * *", "refresh" )
             break
         default:
             unschedule( "refresh" )
@@ -132,30 +151,61 @@ def refresh() {
         return
     }
 
-    try {
+    // Previous poll never reached Connected: count it failed.
+    if (state.pollPending) {
+        state.failedPolls = (state.failedPolls ?: 0) + 1
+        if (state.failedPolls >= FAILED_POLLS_BEFORE_STATUS) {
+            UpsertAttribute( "Status", "Update failed" )
+        }
+    }
+    state.pollPending = true
 
-        if( LoginIfNoToken() ) {
-            // Wait for the login to complete
-            runIn(5, "refresh")
+    Poll(1)
+}
+
+def PollRetry(Map params) {
+    Poll(params.attempt as int)
+}
+
+// One poll: login if needed, then fetch. Login retried here, fetch retried
+// by sendGraphQLRequest.
+def Poll(int attempt) {
+    if( LoginIfNoToken() ) {
+        if (state.accessToken != null) {
+            runIn(5, "FetchDevices")
+        }
+        else if (state.loginRejected) {
+            // Credentials rejected. Retrying won't help.
+            RequestFailed("login rejected")
+        }
+        else if (attempt < MAX_ATTEMPTS) {
+            debug("Login failed (${state.lastLoginError}); poll attempt ${attempt} of ${MAX_ATTEMPTS}, retrying in ${RETRY_DELAY_S}s")
+            runIn(RETRY_DELAY_S, "PollRetry", [data: [attempt: attempt + 1], overwrite: false])
         }
         else {
-            sendGraphQLRequest(GET_DEVICES_QUERY, [:], "ProcessGetDevicesResponse")
+            RequestFailed("login failed ${MAX_ATTEMPTS} times, last error: ${state.lastLoginError}")
         }
+    }
+    else {
+        FetchDevices()
+    }
+}
 
-    }
-    catch (IOException e)
-    {
-        log.error( "Error connecting to API for status. ${e}" )
-        UpsertAttribute( "Status", "Connection Failed: ${e.message}" )
-    }
+def FetchDevices() {
+    sendGraphQLRequest(GET_DEVICES_QUERY, [:], "ProcessGetDevicesResponse")
 }
 
 def LoginIfNoToken() {
 
     if (state.containsKey("accessToken")) {
-        if (DebugLogsEnabled()) log.trace("Valid session, no need to request new")
-
-        return false
+        def expiry = state.tokenExpiry as Long
+        if (expiry && now() < expiry - TOKEN_EXPIRY_MARGIN_S * 1000L) {
+            if (DebugLogsEnabled()) log.trace("Valid session, no need to request new")
+            return false
+        }
+        debug("Access token expired or expiring, logging in again")
+        state.remove("accessToken")
+        state.remove("tokenExpiry")
     }
 
     def credentials = ['email': EmailAddress, 'password': Password, 'locale': 'en'];
@@ -166,24 +216,62 @@ def LoginIfNoToken() {
         "UTF-8"
     );
 
-    sendGraphQLRequest(LOGIN_QUERY, [passcode: passcode], "ProcessLoginResponse", false)
+    sendGraphQLRequest(LOGIN_QUERY, [passcode: passcode], "ProcessLoginResponse", false, 0)
     return true
 }
 
 def ProcessLoginResponse(response) {
     debug("Login raw data = \"${response.getData()}\"")
 
-    state.accessToken = response.getData()?.data?.login?.user?.tokens?.accessToken
+    def data = response.getData()
+    def token = data?.data?.login?.user?.tokens?.accessToken
 
-    if (state.accessToken == null) {
-        log.error("Login failed, no access token received.")
-        UpsertAttribute( "Status", "Login failed" )
+    if (token != null) {
+        state.accessToken = token
+        state.tokenExpiry = TokenExpiryMillis(token)
+        state.loginRejected = false
+        state.remove("lastLoginError")
+        debug("Succesfully logged in to iCOMM API.")
         return
     }
-    else {
-        UpsertAttribute( "Status", "Login successful" )
-        debug("Succesfully logged in to iCOMM API.")
+
+    state.remove("accessToken")
+    state.remove("tokenExpiry")
+
+    // Bad email/password comes back as this GraphQL error code (as handled by
+    // py-aosmith, node-aosmith, homebridge-aosmith-icomm).
+    def invalidCredentials = data?.errors?.any { it?.extensions?.code == "INVALID_CREDENTIALS" }
+
+    if (data?.data?.login == null && !invalidCredentials) {
+        // No login result (other GraphQL errors, outage, rate limit):
+        // server-side problem, not proof of bad credentials. Poll retries.
+        state.lastLoginError = data?.errors ? "GraphQL errors: ${data.errors*.message}" : "empty login response"
+        state.loginRejected = false
+        debug("Login got no result: ${state.lastLoginError}")
+        return
     }
+
+    // INVALID_CREDENTIALS, or server answered login but issued no token.
+    // User must act, so report at once; log error only on first rejection.
+    if (!state.loginRejected) {
+        log.error("Login rejected, no access token received. Check email and password.")
+    }
+    state.loginRejected = true
+    state.lastLoginError = "login rejected"
+    UpsertAttribute( "Status", "Login failed" )
+}
+
+// Token is JWT; read exp claim. Unparseable: assume 4 min.
+def TokenExpiryMillis(token) {
+    try {
+        def payload = token.tokenize(".")[1]
+        def json = new String(org.apache.commons.codec.binary.Base64.decodeBase64(payload), "UTF-8")
+        def exp = new groovy.json.JsonSlurper().parseText(json)?.exp
+        if (exp) return (exp as Long) * 1000L
+    } catch (Exception e) {
+        debug("Could not read token expiry: ${e}")
+    }
+    return now() + 240000L
 }
 
 def ProcessGetDevicesResponse(response) {
@@ -199,6 +287,12 @@ def ProcessGetDevicesResponse(response) {
         return
     }
     else {
+        state.pollPending = false
+        state.failedPolls = 0
+        if (state.requestsFailing) {
+            log.info("iCOMM requests recovered")
+            state.requestsFailing = false
+        }
         UpsertAttribute( "Status", "Connected" )
     }
 
@@ -242,10 +336,11 @@ def ProcessChange(response, fieldToCheck) {
         log.error("Failed to change state: ${response.getData()}")
     }
 
-    runIn(5, "refresh")
+    runIn(5, "FetchDevices")
 }
 
-def sendGraphQLRequest(query, variables, handler, autologin = true, retry = false) {
+// attempt: 1..MAX_ATTEMPTS, retried on failure. 0: single try, caller handles failure.
+def sendGraphQLRequest(query, variables, handler, autologin = true, attempt = 1) {
     def headers = [
         "brand": Brand,
         "version": APP_VERSION,
@@ -267,7 +362,8 @@ def sendGraphQLRequest(query, variables, handler, autologin = true, retry = fals
         httpPostJson([
             uri: uri,
             headers: headers,
-            body: body
+            body: body,
+            timeout: REQUEST_TIMEOUT_S
         ]) { response ->
             def status = response.getStatus();
             def data = response.getData();
@@ -277,36 +373,68 @@ def sendGraphQLRequest(query, variables, handler, autologin = true, retry = fals
                 autologin
             ) {
                 debug("Session expired, logging in again")
-
-                state.remove("accessToken")
-                LoginIfNoToken()
-
-                // Retry the request after logging in
-                runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: false]])
-            } else if (status == 200) {
-                this."$handler"(response)
+                ReloginAndRetry(query, variables, handler, attempt)
+            } else if (status != 200) {
+                RetryOrFail(query, variables, handler, autologin, attempt, "HTTP ${status}")
+            } else if (data?.errors && query == GET_DEVICES_QUERY) {
+                // Error-only response has no devices; handler would misreport.
+                RetryOrFail(query, variables, handler, autologin, attempt, "GraphQL errors: ${data.errors*.message}")
             } else {
-                log.error("GraphQL request failed with status ${status}: ${response.getData()}")
+                this."$handler"(response)
             }
         }
     } catch (groovyx.net.http.HttpResponseException e) {
-        if( e.getStatusCode() == 401 ) {
+        if( e.getStatusCode() == 401 && autologin ) {
             debug("Session expired, logging in again")
-            state.remove("accessToken")
-            LoginIfNoToken()
-            runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: false]])
+            ReloginAndRetry(query, variables, handler, attempt)
         }
         else {
-            log.error("GraphQL request failed: ${e.message}")
+            RetryOrFail(query, variables, handler, autologin, attempt, "HTTP ${e.getStatusCode()}: ${e.message}")
         }
-    } catch (java.net.SocketTimeoutException e) {
-        if (!retry ) {
-            log.warn("GraphQL request timed out: ${e.message}; will retry")
-            runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: autologin, retry: true]])
-        }
-        else {
-            log.error("GraphQL request failed: ${e.message}")
-        }
+    } catch (IOException | groovy.json.JsonException e) {
+        // Timeout, no response, no route, HTML error page.
+        RetryOrFail(query, variables, handler, autologin, attempt, "${e}")
+    }
+}
+
+def ReloginAndRetry(query, variables, handler, attempt) {
+    state.remove("accessToken")
+    state.remove("tokenExpiry")
+    LoginIfNoToken()
+
+    if (state.accessToken != null) {
+        runIn(5, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: false, attempt: attempt], overwrite: false])
+    }
+    else {
+        RetryOrFail(query, variables, handler, true, attempt, "login failed: ${state.lastLoginError}")
+    }
+}
+
+def RetryOrFail(query, variables, handler, autologin, attempt, reason) {
+    if (attempt == 0) {
+        // Only login uses attempt 0. Keep reason for Poll's failure message.
+        // Server never answered, so this says nothing about the credentials.
+        debug("GraphQL request failed: ${reason}")
+        state.lastLoginError = reason
+        state.loginRejected = false
+    }
+    else if (attempt < MAX_ATTEMPTS) {
+        debug("GraphQL request failed: ${reason}; attempt ${attempt} of ${MAX_ATTEMPTS}, retrying in ${RETRY_DELAY_S}s")
+        runIn(RETRY_DELAY_S, "sendGraphQLRequest", [data: [query: query, variables: variables, handler: handler, autologin: autologin, attempt: attempt + 1], overwrite: false])
+    }
+    else {
+        RequestFailed(reason)
+    }
+}
+
+// Warn once when requests start failing; info once on recovery.
+def RequestFailed(reason) {
+    if (!state.requestsFailing) {
+        log.warn("iCOMM requests failing: ${reason}. Next log on recovery.")
+        state.requestsFailing = true
+    }
+    else {
+        debug("iCOMM request failed: ${reason}")
     }
 }
 
@@ -314,10 +442,10 @@ def sendGraphQLRequest(Map params) {
     def query = params.query
     def variables = params.variables
     def handler = params.handler
-    def autologin = params.autologin ?: true
-    def retry = params.retry ?: false
+    def autologin = params.containsKey("autologin") ? params.autologin : true
+    def attempt = params.containsKey("attempt") ? params.attempt as int : 1
 
-    sendGraphQLRequest(query, variables, handler, autologin, retry)
+    sendGraphQLRequest(query, variables, handler, autologin, attempt)
 }
 
 
